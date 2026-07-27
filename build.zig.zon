@@ -1,0 +1,13 @@
+.{
+    .name = .web,
+    .version = "1.0.0",
+    .fingerprint = 0x15c93851f0e68610,
+    .minimum_zig_version = "0.16.0",
+    .dependencies = .{},
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+        "web",
+    },
+}
