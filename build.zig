@@ -59,5 +59,4 @@ pub fn build(b: *std.Build) void {
         .dest_dir = .{ .override = .{ .custom = "www" } },
     }).step);
     b.getInstallStep().dependOn(&b.addInstallFile(b.path("web/index.html"), "www/index.html").step);
-    b.getInstallStep().dependOn(&b.addInstallFile(b.path("web/app.js"), "www/app.js").step);
 }
