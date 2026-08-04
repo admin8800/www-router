@@ -7,37 +7,28 @@
 zig build
 ```
 
-产物目录：`zig-out/www/`（含 `index.html`、`app.js`、`selector.wasm`）。
+产物目录：`zig-out/www/`（含 `index.html`、`selector.wasm`）。
 
 本地预览：
 
 ```powershell
 cd zig-out\www
-python -m http.server 8080
+python -m http.server
 ```
 
-浏览器打开 `http://127.0.0.1:8080`。
+浏览器打开 `http://127.0.0.1:8000`。
 
 ## 部署
 
-将 `zig-out/www/` 整个目录上传到任意静态托管（Nginx / Caddy / OSS / Cloudflare Pages 等）。
+将 `zig-out/www/` 整个目录上传到任意静态托管（Nginx / Caddy / Cloudflare Pages 等）。
 
-Nginx 示例：
+caddy 示例：
 
 ```nginx
-server {
-    listen 80;
-    server_name gate.example.com;
-    root /var/www/selector;
-    index index.html;
-
-    location / {
-        try_files $uri $uri/ /index.html;
-    }
-
-    types {
-        application/wasm wasm;
-    }
+example.com {
+    root * /var/www
+    encode zstd gzip
+    file_server
 }
 ```
 
