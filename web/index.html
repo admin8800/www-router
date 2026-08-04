@@ -53,10 +53,18 @@
       line-height: 1.5;
     }
     .err { color: #f07178; margin-top: 0.75rem; display: none; }
+    .tip {
+      font-size: 1.05rem;
+      font-weight: 500;
+      color: var(--fg);
+      text-align: center;
+      padding: 1.5rem;
+      line-height: 1.6;
+    }
   </style>
 </head>
 <body>
-  <div class="panel">
+  <div class="panel" id="panel">
     <div class="spinner" id="sp"></div>
     <h1>正在选择最优线路</h1>
     <p id="msg">检测网络连通性与延迟…</p>
@@ -72,6 +80,42 @@
     location.replace("about:blank");
   };
 
+  const showBrowserTip = () => {
+    if (blocked) return;
+    blocked = true;
+    try { probeAbort?.abort(); } catch {}
+    document.body.innerHTML = '<p class="tip">请使用浏览器访问</p>';
+  };
+
+  const isBlockedBrowser = () => {
+    const ua = navigator.userAgent || "";
+    if (/MicroMessenger/i.test(ua)) return true;
+    if (typeof window.WeixinJSBridge !== "undefined") return true;
+    if (window.__wxjs_environment === "miniprogram") return true;
+    if (/QQBrowser|MQQBrowser|QQTheme/i.test(ua)) return true;
+    if (/\sQQ\//i.test(ua)) return true;
+    if (/QIHU|360SE|360EE/i.test(ua)) return true;
+    try {
+      const brands = navigator.userAgentData?.brands;
+      if (brands?.some((b) => /360|qihoo|qihu/i.test(b.brand || ""))) return true;
+    } catch {}
+    try {
+      const mimes = navigator.mimeTypes;
+      if (mimes) {
+        const markers = [
+          "application/360softmgrplugin",
+          "application/mozilla-npqihooquicklogin",
+          "application/vnd.chromium.remoting-viewer",
+        ];
+        for (let i = 0; i < mimes.length; i++) {
+          const t = (mimes[i] && mimes[i].type) || "";
+          if (/qihoo|360/i.test(t) || markers.includes(t)) return true;
+        }
+      }
+    } catch {}
+    return false;
+  };
+
   const isDevtools = () => {
     const t0 = performance.now();
     debugger;
@@ -84,6 +128,24 @@
     try { probeAbort?.abort(); } catch {}
     kill();
   };
+
+  const deny = () => {
+    if (blocked) return true;
+    if (isBlockedBrowser()) {
+      showBrowserTip();
+      return true;
+    }
+    if (isDevtools()) {
+      block();
+      return true;
+    }
+    return false;
+  };
+
+  if (isBlockedBrowser()) {
+    showBrowserTip();
+    return;
+  }
 
   document.addEventListener("contextmenu", (e) => e.preventDefault());
   document.addEventListener("keydown", (e) => {
@@ -137,10 +199,7 @@
   }
 
   (async () => {
-    if (isDevtools()) {
-      block();
-      return;
-    }
+    if (deny()) return;
 
     let wasm;
     try {
@@ -149,14 +208,11 @@
       const { instance } = await WebAssembly.instantiate(await r.arrayBuffer());
       wasm = instance.exports;
     } catch {
-      if (!blocked) err("资源加载失败");
+      if (!blocked) err("加载失败");
       return;
     }
 
-    if (blocked || isDevtools()) {
-      block();
-      return;
-    }
+    if (deny()) return;
 
     const mem = wasm.memory;
     const n = wasm.node_count() >>> 0;
@@ -170,10 +226,7 @@
     probeAbort = new AbortController();
     const jobs = [];
     for (let i = 0; i < n; i++) {
-      if (blocked) {
-        block();
-        return;
-      }
+      if (blocked) return;
       const len = wasm.probe_url(i);
       if (len < 0) {
         lview[i] = -1;
@@ -188,10 +241,7 @@
     }
     await Promise.all(jobs);
 
-    if (blocked || isDevtools()) {
-      block();
-      return;
-    }
+    if (deny()) return;
 
     const blen = wasm.pick_best(lp, n);
     if (blen < 0) {
@@ -200,10 +250,7 @@
     }
 
     const dest = u8(mem, out, blen);
-    if (blocked || isDevtools()) {
-      block();
-      return;
-    }
+    if (deny()) return;
     $("msg").textContent = "即将跳转…";
     location.replace(dest);
   })();
