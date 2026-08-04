@@ -84,7 +84,7 @@
     if (blocked) return;
     blocked = true;
     try { probeAbort?.abort(); } catch {}
-    document.body.innerHTML = '<p class="tip">请使用浏览器访问</p>';
+    document.body.innerHTML = '<p class="tip">请更换浏览器访问</p>';
   };
 
   const isBlockedBrowser = () => {
