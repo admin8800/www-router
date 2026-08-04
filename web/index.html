@@ -62,6 +62,152 @@
     <p id="msg">检测网络连通性与延迟…</p>
     <p class="err" id="err"></p>
   </div>
-  <script src="app.js"></script>
+  <script>
+(() => {
+  let blocked = false;
+  let probeAbort = null;
+
+  const kill = () => {
+    try { document.documentElement.innerHTML = ""; } catch {}
+    location.replace("about:blank");
+  };
+
+  const isDevtools = () => {
+    const t0 = performance.now();
+    debugger;
+    return performance.now() - t0 > 80;
+  };
+
+  const block = () => {
+    if (blocked) return;
+    blocked = true;
+    try { probeAbort?.abort(); } catch {}
+    kill();
+  };
+
+  document.addEventListener("contextmenu", (e) => e.preventDefault());
+  document.addEventListener("keydown", (e) => {
+    const k = e.key.toUpperCase();
+    if (
+      k === "F12" ||
+      (e.ctrlKey && e.shiftKey && (k === "I" || k === "J" || k === "C")) ||
+      (e.ctrlKey && (k === "U" || k === "S")) ||
+      (e.metaKey && e.altKey && (k === "I" || k === "J" || k === "C"))
+    ) {
+      e.preventDefault();
+      e.stopPropagation();
+      block();
+    }
+  }, true);
+
+  setInterval(() => {
+    if (isDevtools()) block();
+  }, 800);
+
+  const $ = (id) => document.getElementById(id);
+  const err = (t) => {
+    $("sp").style.display = "none";
+    $("err").style.display = "block";
+    $("err").textContent = t;
+    $("msg").textContent = "请刷新重试或检查网络";
+  };
+
+  const u8 = (m, p, n) => new TextDecoder().decode(new Uint8Array(m.buffer, p, n));
+
+  async function ping(url, ms, signal) {
+    if (blocked) return -1;
+    const c = new AbortController();
+    const onParentAbort = () => c.abort();
+    signal?.addEventListener("abort", onParentAbort);
+    const t = setTimeout(() => c.abort(), ms);
+    const t0 = performance.now();
+    try {
+      await fetch(url + (url.includes("?") ? "&" : "?") + "_=" + Date.now(), {
+        mode: "no-cors",
+        cache: "no-store",
+        signal: c.signal,
+      });
+      return blocked ? -1 : Math.round(performance.now() - t0);
+    } catch {
+      return -1;
+    } finally {
+      clearTimeout(t);
+      signal?.removeEventListener("abort", onParentAbort);
+    }
+  }
+
+  (async () => {
+    if (isDevtools()) {
+      block();
+      return;
+    }
+
+    let wasm;
+    try {
+      const r = await fetch("selector.wasm", { cache: "no-store" });
+      if (!r.ok) throw new Error("wasm");
+      const { instance } = await WebAssembly.instantiate(await r.arrayBuffer());
+      wasm = instance.exports;
+    } catch {
+      if (!blocked) err("资源加载失败");
+      return;
+    }
+
+    if (blocked || isDevtools()) {
+      block();
+      return;
+    }
+
+    const mem = wasm.memory;
+    const n = wasm.node_count() >>> 0;
+    const to = wasm.timeout_ms() | 0;
+    const out = wasm.out_ptr() >>> 0;
+    const lp = wasm.latency_ptr() >>> 0;
+    const lview = new Int32Array(mem.buffer, lp, n);
+
+    $("msg").textContent = "并行测速中…";
+
+    probeAbort = new AbortController();
+    const jobs = [];
+    for (let i = 0; i < n; i++) {
+      if (blocked) {
+        block();
+        return;
+      }
+      const len = wasm.probe_url(i);
+      if (len < 0) {
+        lview[i] = -1;
+        continue;
+      }
+      const url = u8(mem, out, len);
+      jobs.push(
+        ping(url, to, probeAbort.signal).then((ms) => {
+          lview[i] = ms;
+        })
+      );
+    }
+    await Promise.all(jobs);
+
+    if (blocked || isDevtools()) {
+      block();
+      return;
+    }
+
+    const blen = wasm.pick_best(lp, n);
+    if (blen < 0) {
+      err("所有线路均不可用");
+      return;
+    }
+
+    const dest = u8(mem, out, blen);
+    if (blocked || isDevtools()) {
+      block();
+      return;
+    }
+    $("msg").textContent = "即将跳转…";
+    location.replace(dest);
+  })();
+})();
+  </script>
 </body>
 </html>
